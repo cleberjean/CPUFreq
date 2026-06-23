@@ -2,7 +2,7 @@
 ;Program    : CPUFreq
 ;Version    : 4
 ;Author     : Cleber Jean Barranco <cleberjean@hotmail.com>
-;Date       : 21jun2026
+;Date       : 22jun2026
 ;License    : MIT (See LICENSE file)
 ;
 ;Description: Show current CPU frequency in DOS by reading the
@@ -36,6 +36,13 @@
 ;         - Removed Priviligied Mode checking (RDTSC is working with
 ;           EMM386.EXE loaded or Windows in Enhanced Mode).
 ;
+;     22jun2026
+;         + Reintroducide test for Windows Enhanced Mode (RDMSR instructions
+;           trigger a GPF in WIndows Enhanced Mode)
+;         + Changed timing routine (Wait_1_Second_Change) to use clock ticks 
+;           Wait_Clock_Tick_Change and Pause_1_Clock_Tick for the pause to 
+;           get the processor frequency (faster).
+;
 ;-------------------------------------------------------------------------------
 
 
@@ -60,7 +67,7 @@
 ;-------------------------------------------------------------------------------
 ; Directive for Code Type
 ;-------------------------------------------------------------------------------
-    cpu    8086                    ; To use Pentium code below (Nasm directive)
+    cpu    8086                    ; To use 8086 code below (Nasm directive)
 
 
 ;-------------------------------------------------------------------------------
@@ -199,16 +206,16 @@ Test_80486:
 ; Exits with error code 3 if Windows in Enhanced Mode
 ; With EMM386.EXE and DOS only is OK.
 ;------------------------------------------------------------------------------
-    mov    ax,160Ah              ; Get Windows version and mode
+    mov    ax,160Ah                ; Get Windows version and mode
     int    2Fh
-    test   ax,ax                 ; Checks if function is supported
-    jnz    Check_TSC_APERF_MSR   ; Function not supported or not in Windows
-    cmp    cl,2                  ; Checks Windows Standard Mode
-    je     Check_TSC_APERF_MSR   ; Ok. Windows in Standard Mode
-    mov    dx,WINDOWS_E_MODE_MSG ; Windows in Enhanced Mode error message
+    test   ax,ax                   ; Checks if function is supported
+    jnz    Check_TSC_APERF_MSR     ; Function not supported or not in Windows
+    cmp    cl,2                    ; Checks Windows Standard Mode
+    je     Check_TSC_APERF_MSR     ; Ok. Windows in Standard Mode
+    mov    dx,WINDOWS_E_MODE_MSG   ; Windows in Enhanced Mode error message
     mov    ah,09h
     int    21h
-    mov    ax,4C03h              ; Exit with error code 3
+    mov    ax,4C03h                ; Exit with error code 3
     int    21h
 
 
@@ -267,10 +274,8 @@ Show_TSC_Reading_Msg:
 
 
 Get_CPU_Frequency:    
-    mov    ah,02
-    int    1Ah                     ; get current second (DH)
-    call   Wait_Second_Change      ; wait the next second biggining
-    push   dx                      ; save the current second
+    call   Wait_Clock_Tick_Change
+    push   dx                      ; saves actual clock tick
     test   byte [CPU_HAS_APERF],1
     jz     Get_Initial_TSC_Value   ; processor has not IA32_APERF
     xor    eax,eax                 ; it's good to have
@@ -290,12 +295,16 @@ Save_Initial_Value:
     mov    [CLOCKS_LSDW],eax
 
 
-;Wait 1 Second    
-    pop    dx                      ; restore the second to check when it change (then passed 1 second)
-    call   Wait_Second_Change      ; wait 1 second
+;-------------------------------------------------------------------------------
+; 1 Clock Tick Pause
+;-------------------------------------------------------------------------------
+    pop    dx                      ; restores the last clock tick readed
+    call   Pause_1_Clock_Tick      ; Wait until next clock tick
 
 
-;Read IA32_APERF MSR or TSC after 1 Second and Get # of Elapsed Clocks
+;-------------------------------------------------------------------------------
+; Read IA32_APERF MSR or TSC after 1 Second and Get # of Elapsed Clocks
+;-------------------------------------------------------------------------------
     test   byte [CPU_HAS_APERF],1
     jz     Get_Final_TSC_Value
     xor    eax,eax                 ; it's good to have
@@ -314,8 +323,13 @@ Get_Final_TSC_Value:
 Calculate_CPU_Frequency:    
     sub    eax,[CLOCKS_LSDW]
     sbb    edx,[CLOCKS_MSDW]
-    mov    ecx,1000000             ; divide by 1.000.000 to get the frequency with 4 numbers
-                                   ; (1 integer and 3 decimal places for rounding purpose).
+;    mov    ecx,1000000             ; divide by 1.000.000 to get the frequency with 4 numbers
+;                                   ; (1 integer and 3 decimal places for rounding purpose).
+    mov    ecx,54925               ; 1.000.000.000 / 18,20499 (clock ticks
+                                   ; in 1 second)
+                                   ; divide assim to get the frequency with 4 
+                                   ; numbers (1 integer and 3 decimal places
+                                   ; for rounding purpose).
     div    ecx                     ; get frequency in format #### (#.### with a dot before of two last numbers)
     
     add    ax,5                    ; to round the second decimal place (3.996 GHz become 4.00 GHz)
@@ -398,14 +412,54 @@ DOS_1_EXIT:
 
 
 ;-------------------------------------------------------------------------------
-; 1 Second Timing
+; Clock Tricks Syncronism
+;
+; Input : None
+; Output: DX = Current Clock Tick value
+;         AX, BX destroyed
+;         DS preserved
 ;-------------------------------------------------------------------------------
+Wait_Clock_Tick_Change:
+    push   ds                      ; ALWAYS PRESERVE SEGMENT REGISTERS IF ALTERED
+    mov    ax,0040h                ; Access BIOS Data Area (BDA)
+    mov    ds,ax
+    mov    bx,[006Ch]              ; Get Low word of intitial tick value
+
+.Wait_A_New_Tick_Start:
+    mov    dx,[006Ch]              ; Get Low word of tick count
+    cmp    dx,bx
+    je     .Wait_A_New_Tick_Start
+    pop    ds                      ; ALWAYS RESTORE SEGMENT REGISTERS IF ALTERED
+    ret
+
+
+;-------------------------------------------------------------------------------
+; Pause of 1 Clock Tick
+;
+; Input : DX = Initial clock tick
+; Outupt: AX, BX destroyed
+;         DS preserved
+;-------------------------------------------------------------------------------
+Pause_1_Clock_Tick:    
+    push   ds                      ; ALWAYS PRESERVE SEGMENT REGISTERS IF ALTERED
+    mov    ax,0040h                ; Access BIOS Data Area (BDA)
+    mov    ds,ax
+
+.Wait_A_New_Tick_Start:
+    mov    bx,[006Ch]
+    cmp    bx,dx
+    je     .Wait_A_New_Tick_Start
+    pop    ds                      ; ALWAYS RESTORE SEGMENT REGISTERS IF ALTERED
+    ret                            ; 1 tick has passed
+
+
+;1 Second Timing
 Wait_Second_Change:
     push   dx
     mov    ah,02
     int    1Ah
     pop    ax
-    cmp    dx,ax  
+    cmp    dx,ax
     je     Wait_Second_Change      ; second not changed, so not passed 1 second yet
     ret
 
