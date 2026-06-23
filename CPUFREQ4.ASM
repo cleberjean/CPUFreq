@@ -37,7 +37,7 @@
 ;           EMM386.EXE loaded or Windows in Enhanced Mode).
 ;
 ;     22jun2026
-;         + Reintroducide test for Windows Enhanced Mode (RDMSR instructions
+;         + Reintroduced test for Windows Enhanced Mode (RDMSR instructions
 ;           trigger a GPF in WIndows Enhanced Mode)
 ;         + Changed timing routine (Wait_1_Second_Change) to use clock ticks 
 ;           Wait_Clock_Tick_Change and Pause_1_Clock_Tick for the pause to 
@@ -451,17 +451,6 @@ Pause_1_Clock_Tick:
     je     .Wait_A_New_Tick_Start
     pop    ds                      ; ALWAYS RESTORE SEGMENT REGISTERS IF ALTERED
     ret                            ; 1 tick has passed
-
-
-;1 Second Timing
-Wait_Second_Change:
-    push   dx
-    mov    ah,02
-    int    1Ah
-    pop    ax
-    cmp    dx,ax
-    je     Wait_Second_Change      ; second not changed, so not passed 1 second yet
-    ret
 
 
 ;-------------------------------------------------------------------------------
