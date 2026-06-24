@@ -2,7 +2,7 @@
 ;Program    : CPUFreq
 ;Version    : 4
 ;Author     : Cleber Jean Barranco <cleberjean@hotmail.com>
-;Date       : 23jun2026
+;Date       : 24jun2026
 ;License    : MIT (See LICENSE file)
 ;
 ;Description: Show current CPU frequency in DOS by reading the
@@ -49,19 +49,22 @@
 ;         + Changed Wait_Clock_Tick_Change and Pause_1_Clock_Tick for
 ;           Detect_Clock_Tick for both functions, saving 16 bytes.
 ;         + Other more optimizations.
+;
+;     24jun2026
+;         + Improved frequency calculation accuracy by to multiply the clocks
+;           read by TSC or IA32_APERF, by 10 and after to divide by 549254.
+;         * Changed the Detect_Clock_Tick routine name for
+;           Wait_Clock_Tick_Change for better clarity.
 ;-------------------------------------------------------------------------------
 
 
 ;-------------------------------------------------------------------------------
-; Defines    
+; Constants    
 ;-------------------------------------------------------------------------------
     APERF_MSR_FLAG      equ 1
-    IA32_MPERF_MSR      equ 0x000000E7
-    IA32_APERF_MSR      equ 0x000000E8
+    IA32_APERF_MSR      equ 0xE8
     TSC_REG_FLAG        equ 00010000b
     INVARIANT_TSC_FLAG  equ 1
-    FALSE               equ 0
-    TRUE                equ 1
 
 
 ;-------------------------------------------------------------------------------
@@ -284,12 +287,13 @@ Show_TSC_Reading_Msg:
 
 
 Get_CPU_Frequency:    
-    call   Detect_Clock_Tick
+    call   Wait_Clock_Tick_Change  ; Timing start
     test   byte [CPU_HAS_APERF],1
     jz     Get_Initial_TSC_Value   ; Processor has not IA32_APERF
-;    xor    eax,eax                ; Not need, according ChatGPT
+;    xor    eax,eax                ; Not need (according to ChatGPT)
     cpuid                          ; To serialize instructions (MANDATORY!)
-    mov    ecx,IA32_APERF_MSR      ; Load ECX with IA32_APERF (0xE8) MSR
+    xor    ecx,ecx
+    mov    cl,IA32_APERF_MSR       ; Load ECX with IA32_APERF (0xE8) MSR
     rdmsr
     jmp    Save_Initial_Value
 
@@ -310,18 +314,20 @@ Save_Initial_Value:
 
 
 ;-------------------------------------------------------------------------------
-; 1 Clock Tick Pause
+; 1 Clock Tick Pause (54,9254 ms)
+; Waits clock tick to change
 ;-------------------------------------------------------------------------------
-    call   Detect_Clock_Tick
+    call   Wait_Clock_Tick_Change
 
 ;-------------------------------------------------------------------------------
 ; Read IA32_APERF MSR or TSC after 1 Clock Tick and Get # of Elapsed Clocks
 ;-------------------------------------------------------------------------------
     test   byte [CPU_HAS_APERF],1
     jz     Get_Final_TSC_Value
-;    xor    eax,eax                ; Not need, according ChatGPT
+;    xor    eax,eax                ; Not need (according to ChatGPT)
     cpuid                          ; To serialize instructions (MANDATORY!)
-    mov    ecx,IA32_APERF_MSR      ; Load ECX with IA32_APERF (0xE8) MSR
+    xor    ecx,ecx
+    mov    cl,IA32_APERF_MSR       ; Load ECX with IA32_APERF (0xE8) MSR
     rdmsr
     jmp    Calculate_CPU_Frequency
 
@@ -343,17 +349,19 @@ Calculate_CPU_Frequency:
     sub    eax,ebx
     sbb    edx,ecx
 
-;    mov    ecx,1000000             ; Divide by 1.000.000 to get the frequency with 4 numbers
-;                                   ; (1 integer and 3 decimal places for rounding purpose).
-    mov    ecx,54925               ; 1.000.000.000 / 18,20499 (clock ticks
-                                   ; in 1 second) (clock tick = timing window)
-                                   ; Divide it like this to get the frequency with 4
-                                   ; numbers (1 integer and 3 decimal places
-                                   ; for rounding purpose).
-    div    ecx                     ; Get frequency in format #### (#.### with a dot before of two last numbers)
-    
-    add    ax,5                    ; To round the second decimal place (3.996 GHz become 4.00 GHz)
-
+    mul    eax,10                  ; Multiply clocks number by 10 to divide 
+                                   ; by 1/10 of a clock tick (for better 
+                                   ; resolution)
+    mov    ecx,549254              ; 1.000.000.000 / 1,820651 (clock ticks
+                                   ; in 1 second / 10) (clock tick = timing 
+                                   ; window)
+                                   ; Divide it like this to get the frequency
+                                   ; with 4 numbers (1 integer and 3 decimal 
+                                   ; places for rounding purpose).
+    div    ecx                     ; Get frequency in format #### (#.### with 
+                                   ; a dot before of three last numbers)
+    add    ax,5                    ; To round the second decimal place 
+                                   ; (i.e. 3.996 GHz become 4.00 GHz)
 
 ;-------------------------------------------------------------------------------
 ; Put Decimal Frequency Value in DX    
@@ -432,15 +440,14 @@ DOS_1_EXIT:
 
 
 ;-------------------------------------------------------------------------------
-; Clock Tricks Detection  for Syncronism and Timing
+; Waits Clock Tick to Change (for Syncronism and Timing)
 ;
 ; Input : None
 ; Output: DX = Current Clock Tick value
 ;         AX, BX destroyed
 ;         DS preserved
 ;-------------------------------------------------------------------------------
-;Wait_Clock_Tick_Change:
-Detect_Clock_Tick:
+Wait_Clock_Tick_Change:
     push   ds                      ; ALWAYS PRESERVE SEGMENT REGISTERS IF ALTERED
     mov    ax,0040h                ; Access BIOS Data Area (BDA)
     mov    ds,ax
@@ -454,37 +461,10 @@ Detect_Clock_Tick:
     ret
 
 
-;;-------------------------------------------------------------------------------
-;; Pause of 1 Clock Tick
-;;
-;; Input : DX = Initial clock tick
-;; Outupt: AX, BX destroyed
-;;         DS preserved
-;;-------------------------------------------------------------------------------
-;Pause_1_Clock_Tick:
-;    push   ds                      ; ALWAYS PRESERVE SEGMENT REGISTERS IF ALTERED
-;    mov    ax,0040h                ; Access BIOS Data Area (BDA)
-;    mov    ds,ax
-;
-;.Wait_A_New_Tick_Start:
-;    mov    bx,[006Ch]
-;    cmp    bx,dx
-;    je     .Wait_A_New_Tick_Start
-;    pop    ds                      ; ALWAYS RESTORE SEGMENT REGISTERS IF ALTERED
-;    ret                            ; 1 tick has passed
-
-
 ;-------------------------------------------------------------------------------
 ; Store DOS Version for Support Checking of INT 21h 0x4C Function
 ;-------------------------------------------------------------------------------
 DOS_VERSION        db 0
-
-
-;-------------------------------------------------------------------------------
-; Store Initial APERF/TSC Value, to Compare After of 1 Second
-;-------------------------------------------------------------------------------
-;CLOCKS_LSDW        dd 0            ; APERF or TSC value less significant double word
-;CLOCKS_MSDW        dd 0            ; APERF or TSC value most significant double word
 
 
 ;-------------------------------------------------------------------------------
@@ -505,4 +485,4 @@ CPU_FREQ_INFO      db 0Dh,      "The current CPU clock speed is "
 CPU_FREQ           db " .   GHz.              ", 0Dh, 0Ah, "$"
 
 
-SIGNATURE          db "CPUFREQ 4 23JUN2026"
+SIGNATURE          db "CPUFREQ 4 24JUN2026"
