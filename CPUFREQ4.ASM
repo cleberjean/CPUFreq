@@ -53,6 +53,7 @@
 ;     24jun2026
 ;         + Improved frequency calculation accuracy by to multiply the clocks
 ;           read by TSC or IA32_APERF, by 10 and after to divide by 549254.
+;         + Add RCL DX,1 to copy borrow to EDX after MUL EAX,10.
 ;         * Changed the Detect_Clock_Tick routine name for
 ;           Wait_Clock_Tick_Change for better clarity.
 ;-------------------------------------------------------------------------------
@@ -352,6 +353,8 @@ Calculate_CPU_Frequency:
     mul    eax,10                  ; Multiply clocks number by 10 to divide 
                                    ; by 1/10 of a clock tick (for better 
                                    ; resolution)
+    rcl    dx,1                    ; Copy borrow to EDX
+    
     mov    ecx,549254              ; 1.000.000.000 / 1,820651 (clock ticks
                                    ; in 1 second / 10) (clock tick = timing 
                                    ; window)
