@@ -1,0 +1,41 @@
+
+
+;------------------------------------------------------------------------------
+; Testes para Debugging
+; ---------------------
+; 18,20651 clock ticks in 1 second.
+;------------------------------------------------------------------------------
+;    mov    eax,00375074h           ;  66 MHz
+;    mov    eax,0053CF3Ch           ; 100 MHz
+;    mov    eax,00C6A0E9h           ; 237 MHz
+;    mov    eax,01792491h           ; 450 MHz
+;    mov    eax,029E79E6h           ; 800 MHz
+;    mov    eax,0337026Fh           ; 982 MHz
+;    mov    eax,03461860h           ; 1.00 GHz
+;    mov    eax,068C30C1h           ; 2.00 GHz
+;    mov    eax,09D24921h           ; 3.00 GHz
+;    mov    eax,0D186182h           ; 4.00 GHz
+;    mov    eax,105E79E2h           ; 5.00 GHz
+;    mov    eax,13A49243h           ; 6.00 GHz
+;    mov    eax,15436DB0h           ; 6,495 GHz
+;    mov    eax,15F36DB0h           ; 6,705 GHz
+;    mov    eax,163EDB67h           ; 6,795 GHz
+;    mov    eax,169A359Ch           ; 6,904 GHz
+;    mov    eax,16EAAAA3h           ; 7.00 GHz
+;    mov    eax,173E79E0h           ; 7.10 GHz
+;    mov    eax,17E6185Ah           ; 7.30 GHz
+;    mov    eax,17FF3CECh           ; 7.33 GHz
+;    mov    eax,1839E797h           ; 7.40 GHz
+;    mov    eax,188DB6D4h           ; 7.50 GHz
+;    mov    eax,18E18610h           ; 7.60 GHz
+;    mov    eax,1935554Dh           ; 7.70 GHz
+;    mov    eax,1989248Ah           ; 7.80 GHz
+    mov    eax,19999999h           ; ~7.82 GHz   <---<<< MAX FREQ!
+;    mov    eax,19DCF3C7h           ; 7.90 GHz
+;    mov    eax,19FF506Dh           ; 7.941 GHz
+;    mov    eax,1A06DB65h           ; 7.95 GHz
+;    mov    eax,1A30C304h           ; 8.00 GHz
+;    mov    eax,1D76DB64h           ; 9.00 GHz
+;    mov    eax,20B0617Ch           ; 9,985 GHz
+;------------------------------------------------------------------------------
+
