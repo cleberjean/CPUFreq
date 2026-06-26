@@ -272,10 +272,10 @@ Check_TSC_APERF_MSR:
     and    cl,APERF_MSR_FLAG       ; Check if processor has the APERF MSR (CL = 1 if yes)
     mov    [CPU_HAS_APERF],cl      ; Set APERF flag according to the CPUID result
     jz     Check_Invariant_TSC     ; Processor does not support the APERF MSR.
-                                   ; Then let's to use the TSC register.
+                                   ; Use the TSC register instead.
     mov    dx,APERF_READING_MSG
     mov    ah,09h
-    int    21h                     ; Show "Reading the CPU frequency using the IA32_APERF MSR..." message
+    int    21h                     ; Show "Reading CPU frequency using the IA32_APERF MSR..." message
     jmp    Get_CPU_Frequency
 
 
@@ -299,7 +299,7 @@ Check_Invariant_TSC:
 show_tsc_reading_msg:
     mov    dx,TSC_READING_MSG
     mov    ah,09h
-    int    21h                     ; Show "Reading the CPU frequency using the TSC register..." message
+    int    21h                     ; Show "Reading CPU frequency using the TSC register..." message
 
 
 ;-------------------------------------------------------------------------------
@@ -482,8 +482,8 @@ DOS_VERSION        db 0
 ;-------------------------------------------------------------------------------
 ; APERF Support Flag
 ;-------------------------------------------------------------------------------
-CPU_HAS_APERF      db 0            ; Flag for IA32_APERF MSR support (1 = has APERF)
-
+CPU_HAS_APERF      db 0            ; Flag for IA32_APERF MSR support 
+                                   ; (1 = processor does support APERF)
 
 ;-------------------------------------------------------------------------------
 ; Messages
