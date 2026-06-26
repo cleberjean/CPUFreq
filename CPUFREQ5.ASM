@@ -2,13 +2,12 @@
 ;Program    : CPUFreq
 ;Version    : 5
 ;Author     : Cleber Jean Barranco <cleberjean@hotmail.com>
-;Date       : 25jun2026
+;Date       : 26jun2026
 ;License    : MIT (See LICENSE file)
 ;
-;Description: Show current CPU frequency in DOS by reading the
-;             CPU clock through of APERF (0xE8) MSR or TSC register
-;             and show as "#.## GHz".
-;
+;Description: Shows the current CPU frequency in DOS by reading the
+;             CPU clock counter using the IA32_APERF MSR (0xE8)
+;             or the TSC register and displays it as "#.## GHz".
 ;To Compile : "nasm cpufreq.asm -o cpufreq.com" or
 ;             "fasm cpufreq.asm cpufreq.com"
 ;
@@ -57,7 +56,14 @@
 ;           Wait_Clock_Tick_Change for better clarity.
 ;
 ;     25jun2026 (Version 5)
-;         + Turn IA32_APERF and TSC checking code on sub-routines.
+;         + Moved the IA32_APERF and TSC reading code into subroutines.
+;
+;     26jun2026
+;         + Add instructions DEC BYTE [DOS_VERSION] and JNZ DOS_1_Exit
+;           replacing CMP BYTE [DOS_VERSION],2 and JB DOS_1_Exit instructions
+;           to check the DOS 1.x version.
+;         + Simplified Wait_Clock_Tick_Change routine.
+;         + Improved some comments.
 ;
 ;-------------------------------------------------------------------------------
 
@@ -89,7 +95,7 @@
 ;-------------------------------------------------------------------------------
     mov    ax,3000h
     int    21h                     ; Get DOS version
-    mov    [DOS_VERSION],al        ; and store for checkings
+    mov    [DOS_VERSION],al        ; Store for checking at program exit
 
 
 ;-------------------------------------------------------------------------------
@@ -222,6 +228,7 @@ Test_80486:
 ; Windows in Enhanced Mode not allow execute the RDMSR instruction
 ; Exits with error code 3 if Windows in Enhanced Mode
 ; With EMM386.EXE and DOS only is OK.
+; As Windows Enhanced Mode does not run in DOS 1.x do not need to check it.
 ;------------------------------------------------------------------------------
     mov    ax,160Ah                ; Get Windows version and mode
     int    2Fh
@@ -237,7 +244,7 @@ Test_80486:
 
 
 ;-------------------------------------------------------------------------------
-; Check for Time Stamp Counter Register and APERF MSR   
+; Checks for Time Stamp Counter Register and APERF MSR
 ;-------------------------------------------------------------------------------
 Check_TSC_APERF_MSR:
     push   bx                      ; Save cpuid maximum leaves
@@ -250,48 +257,49 @@ Check_TSC_APERF_MSR:
                                    ; (allow to use the CMP AL,06 instruction
                                    ;  that is one byte smaller then CMP BL,6
                                    ;  if to use POP BX).
-    jz     Bad_Proc                ; Skip if processor not has a TSC register
+    jz     Bad_Proc                ; Skip if processor does not support the TSC register
     cmp    al,06h                  ; CPUID leaves number is 6 or greater?
     jb     Check_Invariant_TSC     ; No, then skip APERF checking (processor not support IA32_APERF MSR)
     
 
 ;-------------------------------------------------------------------------------
-; Check for IA32_APERF MSR    
+; Checks for IA32_APERF MSR
 ;-------------------------------------------------------------------------------
 ;    mov    eax,06h
     xor    eax,eax
     mov    al,06h                  ; EAX = 6 (1 byte smaller than MOV EAX,6)
     cpuid
-    and    cl,APERF_MSR_FLAG       ; Check if processor has APERF MSR (CL = 1 if yes)
-    mov    [CPU_HAS_APERF],cl      ; Set APERF flag de acordo com o valor do cpuid flag
-    jz     Check_Invariant_TSC     ; Processor not has APERF. Let's go to use TSC
+    and    cl,APERF_MSR_FLAG       ; Check if processor has the APERF MSR (CL = 1 if yes)
+    mov    [CPU_HAS_APERF],cl      ; Set APERF flag according to the CPUID result
+    jz     Check_Invariant_TSC     ; Processor does not support the APERF MSR.
+                                   ; Then let's to use the TSC register.
     mov    dx,APERF_READING_MSG
     mov    ah,09h
-    int    21h                     ; Show "Reading the CPU frequency through of IA32_APERF MSR..." message
+    int    21h                     ; Show "Reading the CPU frequency using the IA32_APERF MSR..." message
     jmp    Get_CPU_Frequency
 
 
 ;-------------------------------------------------------------------------------
-; Check if the Processor has an Invariant Time Stamp Counter
-; Test only if CPUID supports 80000007h Extended Leaf
+; Checks if the Processor has an Invariant Time Stamp Counter
+; Tests only if CPUID supports 80000007h Extended Leaf
 ;-------------------------------------------------------------------------------
 Check_Invariant_TSC:    
     mov    eax,80000000h           ; Check if CPUID has Extended Leaves
     cpuid
     cmp    eax,80000007h           ; CPUID has 80000007h Extended Leaf?
-    jb     show_TSC_reading_msg    ; No, then skip Invariant TSC checking
+    jb     show_tsc_reading_msg    ; No, then skip Invariant TSC checking
     mov    eax, 0x80000007         ; Check Invariant TSC presence
     cpuid
     test   dh,INVARIANT_TSC_FLAG   ; Check if processor has an Invariant TSC (EDX Bit 8 = 1 = Invariant TSC present)
-    jz     show_TSC_reading_msg    ; No, then skip Invariant TSC message
+    jz     show_tsc_reading_msg    ; No, then skip Invariant TSC message
     mov    dx,INVARIANT_TSC_MSG
     mov    ah,09h
     int    21h                     ; Show "Processor has an Invariant TSC!" Message
 
-show_TSC_reading_msg:
+show_tsc_reading_msg:
     mov    dx,TSC_READING_MSG
     mov    ah,09h
-    int    21h                     ; Show "Reading the CPU frequency through of TSC register..." message
+    int    21h                     ; Show "Reading the CPU frequency using the TSC register..." message
 
 
 ;-------------------------------------------------------------------------------
@@ -304,17 +312,17 @@ show_TSC_reading_msg:
 Get_CPU_Frequency:    
     call   Wait_Clock_Tick_Change  ; Start at moment 0 from clock tick
     call   Get_CPU_Clock_Cycles    ; Get initial accumulated CPU clock cycles
-    push   eax                     ; Saves initial LSDW from clock cycles
-    push   edx                     ; Saves initial MSDW from clock cycles
+    push   eax                     ; Save initial LSDW from clock cycles
+    push   edx                     ; Save initial MSDW from clock cycles
     call   Wait_Clock_Tick_Change  ; Wait 1 clock tick to pass (54,9254 ms)
     call   Get_CPU_Clock_Cycles    ; Get elapsed clock cycles
 
 
 ;-------------------------------------------------------------------------------
-; Get Spent Clock Cycles During the Clock Tick Pause, in EDX:EAX
+; Gets Spent Clock Cycles During the Clock Tick Pause, in EDX:EAX
 ;-------------------------------------------------------------------------------
-    pop    ecx                     ; Restores the clock cycles MSDW before pause
-    pop    ebx                     ; Restores the clock cycles LSDW before pause
+    pop    ecx                     ; Restore the clock cycles MSDW before pause
+    pop    ebx                     ; Restore the clock cycles LSDW before pause
     sub    eax,ebx
     sbb    edx,ecx
 
@@ -340,12 +348,12 @@ Get_CPU_Frequency:
                                    ; (i.e. 3.996 GHz become 4.00 GHz)
 
 ;-------------------------------------------------------------------------------
-; Put Decimal Frequency Value in DX    
+; Stores the Fractional Part in DX
 ;-------------------------------------------------------------------------------
     mov    cx,1000
     xor    dx,dx                   ; MUST CLEAR DX before of the division!
-    div    cx                      ; After this, DX will have the decimal part from frequency 
-    
+    div    cx                      ; After this, DX will have the decimal part
+                                   ; from the frequency.
 
 ;-------------------------------------------------------------------------------
 ; Convert the GHz Unity (AX) to ASCII and Store on the Message Buffer
@@ -366,13 +374,13 @@ Get_CPU_Frequency:
     mov    ax,dx                   ; Copy decimal value to AX
     mov    cx,10
     xor    dx,dx                   ; MUST CLEAR DX before of the division!
-    div    cx                      ; will show 2 decimal places only
-    
+    div    cx                      ; Reduces the fractional value to 2 decimal
+                                   ; places.
 
 ;-------------------------------------------------------------------------------
 ; Convert the GHz Decimal Places to ASCII and Store on the Message Buffer
 ;-------------------------------------------------------------------------------
-    aam    0Ah                     ; Frequency fractional value to BCD (0Ah = Decimal)
+    aam    0Ah                     ; Converts fract value to BCD (0Ah = Decimal)
     or     ax,3030h                ; BCD to ASCII
     xchg   ah,al
     inc    di                      ; Skip decimal dot
@@ -390,8 +398,10 @@ Get_CPU_Frequency:
 ;-------------------------------------------------------------------------------
 ; Finish Successfully (Error Code 0)
 ;-------------------------------------------------------------------------------
-    cmp    byte [DOS_VERSION],2    ; Check DOS version to execute proper exit interrupt
-    jb     DOS_1_EXIT              ; Finish with the INT 20h (DOS 1.x)
+;    cmp    byte [DOS_VERSION],2    ; Check DOS version to execute proper exit interrupt
+;    jb     Legacy_DOS_Exit         ; Finish with the INT 20h (DOS 1.x)
+    dec    byte [DOS_VERSION]      ; Check for DOS 1.x
+    jz     Legacy_DOS_Exit         ; DOS is version 1.x
     mov    ax,4C00h
     int    21h
 
@@ -403,38 +413,38 @@ Bad_Proc:
     mov    dx,NEED_PENTIUM_MSG
     mov    ah,09h
     int    21h
-    cmp    byte [DOS_VERSION],2    ; Check DOS version to execute proper exit interrupt
-    jb     DOS_1_EXIT              ; Finish with the INT 20h (DOS 1.x)
+;    cmp    byte [DOS_VERSION],2    ; Check DOS version to execute proper exit interrupt
+;    jb     Legacy_DOS_Exit         ; Finish with the INT 20h (DOS 1.x)
+    dec    byte [DOS_VERSION]      ; Check for DOS 1.x
+    jz     Legacy_DOS_Exit         ; DOS is version 1.x
     mov    ax,4C01h
     int    21h                     ; Finish with error code 1
 
 
 ;-------------------------------------------------------------------------------
-; Exit for DOS 1.x Only (MS-DOS 1.x not support INT 21h 0x4C exit function)
+; Exit for DOS 1.x Only (DOS 1.x does not support INT 21h, AH=4Ch)
 ;-------------------------------------------------------------------------------
-DOS_1_EXIT:
-    int    20h                     ; For DOS 1.x
+Legacy_DOS_Exit:
+    int    20h                     ; Only for DOS 1.x
 
 
 ;-------------------------------------------------------------------------------
 ; Waits Clock Tick to Change (for Timing)
 ; ---------------------------------------
 ; Input : None
-; Output: DX = Current Clock Tick value
-;         AX and BX destroyed
+; Output: AX destroyed
 ;         DS preserved
 ;-------------------------------------------------------------------------------
 Wait_Clock_Tick_Change:
-    push   ds                      ; ALWAYS PRESERVE SEGMENT REGISTERS IF ALTERED
+    push   ds                      ; ALWAYS PRESERVE SEGMENT REGISTERS IF ALTERED!
     mov    ax,0040h                ; Access BIOS Data Area (BDA)
     mov    ds,ax
-    mov    bx,[006Ch]              ; Get low word of intitial tick value
+    mov    ax,[006Ch]              ; Get low word of initial clock tick value
 
 wait_new_clock_tick:
-    mov    dx,[006Ch]              ; Get low word of tick count
-    cmp    dx,bx
-    je     wait_new_clock_tick
-    pop    ds                      ; ALWAYS RESTORE SEGMENT REGISTERS IF ALTERED
+    cmp    [006Ch],ax              ; Check if clock tick has changed
+    je     wait_new_clock_tick     ; Not yet
+    pop    ds                      ; ALWAYS RESTORE SEGMENT REGISTERS IF ALTERED!
     ret
 
 
@@ -446,8 +456,8 @@ wait_new_clock_tick:
 ;------------------------------------------------------------------------------
 Get_CPU_Clock_Cycles:
     test   byte [CPU_HAS_APERF],1
-    jz     get_TSC_value           ; Processor has not IA32_APERF
-;    xor    eax,eax                ; Not need (according to ChatGPT)
+    jz     get_tsc_value           ; Processor does not support IA32_APERF
+;    xor    eax,eax                ; Not needed (according to ChatGPT)
     cpuid                          ; To serialize instructions (MANDATORY!)
 ;    mov    ecx,IA32_APERF_MSR
     xor    ecx,ecx
@@ -455,7 +465,7 @@ Get_CPU_Clock_Cycles:
     rdmsr
     ret                            ; Returns with clock cycles in EDX:EAX
 
-get_TSC_value:    
+get_tsc_value:
     xor    eax,eax                 ; Double function. Add equalization clocks
                                    ; and clear EAX for CPUID instruction.
     cpuid                          ; To serialize instructions (MANDATORY!)
@@ -481,13 +491,13 @@ CPU_HAS_APERF      db 0            ; Flag for IA32_APERF MSR support (1 = has AP
 NEED_PENTIUM_MSG   db 0Dh, 0Ah, "Requires a Pentium or newer processor.", 0Dh, 0Ah, "$"
 WINDOWS_E_MODE_MSG db 0Dh, 0Ah, "Can not read the processor frequency in Windows Enhanced Mode!", 0Dh, 0Ah, "$"
 INVARIANT_TSC_MSG  db 0Dh, 0Ah, "Processor has an Invariant TSC!", "$"
-TSC_READING_MSG    db 0Dh, 0Ah, "Reading the CPU frequency through of TSC register...$"
-APERF_READING_MSG  db 0Dh, 0Ah, "Reading the CPU frequency through of IA32_APERF MSR...$"
+TSC_READING_MSG    db 0Dh, 0Ah, "Reading CPU frequency using the TSC register...$"
+APERF_READING_MSG  db 0Dh, 0Ah, "Reading CPU frequency using the IA32_APERF MSR...$"
 CPU_FREQ_INFO      db 0Dh,      "The current CPU clock speed is "
-CPU_FREQ           db " .   GHz.              ", 0Dh, 0Ah, "$"
+CPU_FREQ           db " .   GHz.         ", 0Dh, 0Ah, "$"
 
 
 ;-------------------------------------------------------------------------------
 ; File Signature
 ;-------------------------------------------------------------------------------
-SIGNATURE          db "CPUFREQ 5 25JUN2026"
+SIGNATURE          db "CPUFREQ 5 26JUN2026"
