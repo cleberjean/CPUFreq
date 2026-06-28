@@ -2,7 +2,7 @@
 ;Program    : CPUFreq
 ;Version    : 5
 ;Author     : Cleber Jean Barranco <cleberjean@hotmail.com>
-;Date       : 26jun2026
+;Date       : 28jun2026
 ;License    : MIT (See LICENSE file)
 ;
 ;Description: Shows the current CPU frequency in DOS by reading the
@@ -64,6 +64,11 @@
 ;           to check the DOS 1.x version.
 ;         + Simplified Wait_Clock_Tick_Change routine.
 ;         + Improved some comments.
+;
+;     28jun2026
+;         + Changed the MUL EAX,10 instruction on converting clock cycles 
+;           to GHz routine (now is MUL ECX) to read frequencies higher 
+;           than 7,82 GHz.
 ;
 ;-------------------------------------------------------------------------------
 
@@ -319,7 +324,7 @@ Get_CPU_Frequency:
 
 
 ;-------------------------------------------------------------------------------
-; Gets Spent Clock Cycles During the Clock Tick Pause, in EDX:EAX
+; Gets Elapsed Clock Cycles During the Clock Tick Pause, in EDX:EAX
 ;-------------------------------------------------------------------------------
     pop    ecx                     ; Restore the clock cycles MSDW before pause
     pop    ebx                     ; Restore the clock cycles LSDW before pause
@@ -330,9 +335,11 @@ Get_CPU_Frequency:
 ;-------------------------------------------------------------------------------
 ; Converts Clock Cycles to GHz
 ;-------------------------------------------------------------------------------
-    mul    eax,10                  ; Multiply clock cycles by 10 to divide 
+    xor    ecx,ecx
+    mov    cl,0x0A                 ; ECX = 10 (1 byte less than MOV ECX,0x0A)
+    mul    ecx                     ; Multiply clock cycles by 10 to divide 
                                    ; by 1/10 of a clock tick (for better 
-                                   ; resolution)
+                                   ; resolution, see instruction below)
     
     mov    ecx,549254              ; 1.000.000.000 / 1,820651 (clock ticks
                                    ; in 1 second / 10)
@@ -483,7 +490,7 @@ DOS_VERSION        db 0
 ; APERF Support Flag
 ;-------------------------------------------------------------------------------
 CPU_HAS_APERF      db 0            ; Flag for IA32_APERF MSR support 
-                                   ; (1 = processor does support APERF)
+                                   ; (1 = processor does support APERF MSR)
 
 ;-------------------------------------------------------------------------------
 ; Messages
@@ -500,4 +507,4 @@ CPU_FREQ           db " .   GHz.         ", 0Dh, 0Ah, "$"
 ;-------------------------------------------------------------------------------
 ; File Signature
 ;-------------------------------------------------------------------------------
-SIGNATURE          db "CPUFREQ 5 26JUN2026"
+SIGNATURE          db "CPUFREQ 5 28JUN2026"
