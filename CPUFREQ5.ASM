@@ -66,9 +66,8 @@
 ;         + Improved some comments.
 ;
 ;     28jun2026
-;         + Changed the MUL EAX,10 instruction on converting clock cycles 
-;           to GHz routine (now is MUL ECX) to read frequencies higher 
-;           than 7,82 GHz.
+;         + Replaced "MUL EAX,10" with "MUL ECX" on converting clock cycles
+;           to GHz routine, allowing frequencies above 7.82 GHz are read.
 ;
 ;-------------------------------------------------------------------------------
 
@@ -91,8 +90,9 @@
 ;-------------------------------------------------------------------------------
 ; Directive for Code Type
 ;-------------------------------------------------------------------------------
-    bits   16
-    cpu    8086                    ; To use 8086 code below (Nasm directive)
+    bits   16                      ; Ensures that 32-bit instructions
+                                   ; 66h prefixes are generated.
+    cpu    8086                    ; Use 8086 code below (Nasm directive)
 
 
 ;-------------------------------------------------------------------------------
@@ -173,7 +173,7 @@ bad_proc_near_jump:
 ;-------------------------------------------------------------------------------
 ; Directive for Code Type
 ;-------------------------------------------------------------------------------
-    cpu    386                     ; To use 80386 code below (Nasm directive)
+    cpu    386                     ; Use 80386 code below (Nasm directive)
     
 
 ;-------------------------------------------------------------------------------
@@ -219,7 +219,7 @@ Test_80486:
 ;-------------------------------------------------------------------------------
 ; Now is safe to use the CPUID instruction to get processor informations
 ;-------------------------------------------------------------------------------
-    cpu    586                     ; To use Pentium code below (Nasm directive)
+    cpu    586                     ; Use Pentium code below (Nasm directive)
 
     xor    eax,eax                 ; EAX = 0
     cpuid
@@ -295,8 +295,9 @@ Check_Invariant_TSC:
     jb     show_tsc_reading_msg    ; No, then skip Invariant TSC checking
     mov    eax, 0x80000007         ; Check Invariant TSC presence
     cpuid
-    test   dh,INVARIANT_TSC_FLAG   ; Check if processor has an Invariant TSC (EDX Bit 8 = 1 = Invariant TSC present)
-    jz     show_tsc_reading_msg    ; No, then skip Invariant TSC message
+    test   dh,INVARIANT_TSC_FLAG   ; Check if processor has an Invariant TSC
+                                   ; (EDX Bit 8 = 1 = Invariant TSC present)
+    jz     show_tsc_reading_msg    ; If does not, skips Invariant TSC message
     mov    dx,INVARIANT_TSC_MSG
     mov    ah,09h
     int    21h                     ; Show "Processor has an Invariant TSC!" Message
@@ -311,7 +312,7 @@ show_tsc_reading_msg:
 ; Calculates The Processor Frequency
 ; ----------------------------------
 ; In 1 second are generated ~ 18,20651 clock ticks.
-; Uses the Clock Ticks to produce a pause of 54,9254 ms to count
+; Uses the Clock Ticks to generate a pause of 54,9254 ms to count
 ; the CPU clock cycles generated into the one clock tick window.
 ;-------------------------------------------------------------------------------
 Get_CPU_Frequency:    
@@ -331,6 +332,45 @@ Get_CPU_Frequency:
     sub    eax,ebx
     sbb    edx,ecx
 
+;------------------------------------------------------------------------------
+; For Debugging
+; -------------
+; Based in 18,20651 clock ticks in 1 second.
+;------------------------------------------------------------------------------
+;    mov    eax,00375074h           ;  66 MHz
+;    mov    eax,0053CF3Ch           ; 100 MHz
+;    mov    eax,00C6A0E9h           ; 237 MHz
+;    mov    eax,01792491h           ; 450 MHz
+;    mov    eax,029E79E6h           ; 800 MHz
+;    mov    eax,0337026Fh           ; 982 MHz
+;    mov    eax,03461860h           ; 1.00 GHz
+;    mov    eax,068C30C1h           ; 2.00 GHz
+;    mov    eax,09D24921h           ; 3.00 GHz
+;    mov    eax,0D186182h           ; 4.00 GHz
+;    mov    eax,0DE4E049h           ; 4,244 GHz
+;    mov    eax,105E79E2h           ; 5.00 GHz
+;    mov    eax,13A49243h           ; 6.00 GHz
+;    mov    eax,15436DB0h           ; 6,495 GHz
+;    mov    eax,15F36DB0h           ; 6,705 GHz
+;    mov    eax,163EDB67h           ; 6,795 GHz
+;    mov    eax,169A359Ch           ; 6,904 GHz
+;    mov    eax,16EAAAA3h           ; 7.00 GHz
+;    mov    eax,173E79E0h           ; 7.10 GHz
+;    mov    eax,17E6185Ah           ; 7.30 GHz
+;    mov    eax,17FF3CECh           ; 7.33 GHz
+;    mov    eax,1839E797h           ; 7.40 GHz
+;    mov    eax,188DB6D4h           ; 7.50 GHz
+;    mov    eax,18E18610h           ; 7.60 GHz
+;    mov    eax,1935554Dh           ; 7.70 GHz
+;    mov    eax,1989248Ah           ; 7.80 GHz
+;    mov    eax,1999E796h           ; 7.82 GHz
+;    mov    eax,19DCF3C7h           ; 7.90 GHz
+;    mov    eax,19FF506Dh           ; 7,941 GHz
+;    mov    eax,1A06DB65h           ; 7.95 GHz
+;    mov    eax,1A30C304h           ; 8.00 GHz
+;    mov    eax,1D76DB64h           ; 9.00 GHz
+;    mov    eax,20B0617Ch           ; 9,985 GHz
+;------------------------------------------------------------------------------
 
 ;-------------------------------------------------------------------------------
 ; Converts Clock Cycles to GHz
@@ -387,7 +427,7 @@ Get_CPU_Frequency:
 ;-------------------------------------------------------------------------------
 ; Convert the GHz Decimal Places to ASCII and Store on the Message Buffer
 ;-------------------------------------------------------------------------------
-    aam    0Ah                     ; Converts fract value to BCD (0Ah = Decimal)
+    aam    0Ah                     ; Converts the fractional part to BCD
     or     ax,3030h                ; BCD to ASCII
     xchg   ah,al
     inc    di                      ; Skip decimal dot
